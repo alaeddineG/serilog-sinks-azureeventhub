@@ -19,16 +19,16 @@ using System.Text;
 using System.Threading.Tasks;
 using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Producer;
+using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting;
-using Serilog.Sinks.PeriodicBatching;
 
 namespace Serilog.Sinks.AzureEventHub
 {
     /// <summary>
     /// Writes log events to an Azure Event Hub in batches.
     /// </summary>
-    public class AzureEventHubBatchingSink : PeriodicBatchingSink
+    public class AzureEventHubBatchingSink : IBatchedLogEventSink
     {
         private readonly EventHubProducerClient _eventHubClient;
         private readonly ITextFormatter _formatter;
@@ -38,30 +38,20 @@ namespace Serilog.Sinks.AzureEventHub
         /// </summary>
         /// <param name="eventHubClient">The EventHubClient to use in this sink.</param>
         /// <param name="formatter">Provides formatting for outputting log data</param>
-        /// <param name="batchSizeLimit"></param>
-        /// <param name="period"></param>
         public AzureEventHubBatchingSink(
             EventHubProducerClient eventHubClient,
-            ITextFormatter formatter,
-            int batchSizeLimit,
-            TimeSpan period)
-            : base(batchSizeLimit, period)
+            ITextFormatter formatter)
         {
-            if (batchSizeLimit < 1 || batchSizeLimit > 100)
-            {
-                throw new ArgumentException(
-                    "batchSizeLimit must be between 1 and 100.");
-            }
-
             _eventHubClient = eventHubClient;
             _formatter = formatter;
         }
-
+        
         /// <summary>
-        /// Emit a batch of log events, running to completion synchronously.
+        /// Emit a batch of log events, asynchronously.
         /// </summary>
-        /// <param name="events">The events to emit.</param>
-        protected override Task EmitBatchAsync(IEnumerable<LogEvent> events)
+        /// <param name="batch"></param>
+        /// <returns></returns>
+        public Task EmitBatchAsync(IReadOnlyCollection<LogEvent> batch)
         {
             var batchedEvents = new List<EventData>();
             var batchPartitionKey = Guid.NewGuid().ToString();
@@ -69,7 +59,7 @@ namespace Serilog.Sinks.AzureEventHub
             // Possible optimizations for the below:
             // 1. Reuse a StringWriter object for the whole batch, or possibly across batches.
             // 2. Reuse byte[] buffers instead of reallocating every time.
-            foreach (var logEvent in events)
+            foreach (var logEvent in batch)
             {
                 byte[] body;
                 using (var render = new StringWriter())
